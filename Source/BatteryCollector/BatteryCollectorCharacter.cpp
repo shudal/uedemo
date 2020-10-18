@@ -9,6 +9,8 @@
 #include "GameFramework/Controller.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Components/SphereComponent.h"
+#include "Pickup.h"
+#include "BatteryPickup.h"
 //////////////////////////////////////////////////////////////////////////
 // ABatteryCollectorCharacter
 
@@ -48,6 +50,9 @@ ABatteryCollectorCharacter::ABatteryCollectorCharacter()
 	CollectionSphere->SetSphereRadius(200.0f);
 	// Note: The skeletal mesh and anim blueprint references on the Mesh component (inherited from Character) 
 	// are set in the derived blueprint asset named MyCharacter (to avoid direct content references in C++)
+ 
+	InitialPower = 2000.f;
+	CharacterPower = InitialPower;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -59,6 +64,8 @@ void ABatteryCollectorCharacter::SetupPlayerInputComponent(class UInputComponent
 	check(PlayerInputComponent);
 	PlayerInputComponent->BindAction("Jump", IE_Pressed, this, &ACharacter::Jump);
 	PlayerInputComponent->BindAction("Jump", IE_Released, this, &ACharacter::StopJumping);
+
+	PlayerInputComponent->BindAction("Collect", IE_Pressed, this, &ABatteryCollectorCharacter::CollectPickups);
 
 	PlayerInputComponent->BindAxis("MoveForward", this, &ABatteryCollectorCharacter::MoveForward);
 	PlayerInputComponent->BindAxis("MoveRight", this, &ABatteryCollectorCharacter::MoveRight);
@@ -80,6 +87,17 @@ void ABatteryCollectorCharacter::SetupPlayerInputComponent(class UInputComponent
 }
 
 
+float ABatteryCollectorCharacter::GetInitialPower()
+{
+	return InitialPower;
+}
+float ABatteryCollectorCharacter::GetCurrentPower()
+{
+	return CharacterPower;
+}
+void ABatteryCollectorCharacter::UpdatePower(float PowerChange) {
+	CharacterPower = CharacterPower + PowerChange;
+}
 void ABatteryCollectorCharacter::OnResetVR()
 {
 	UHeadMountedDisplayFunctionLibrary::ResetOrientationAndPosition();
@@ -133,5 +151,29 @@ void ABatteryCollectorCharacter::MoveRight(float Value)
 		const FVector Direction = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
 		// add movement in that direction
 		AddMovementInput(Direction, Value);
+	}
+}
+void ABatteryCollectorCharacter::CollectPickups() {
+	TArray<AActor*> CollectedActors;
+	CollectionSphere->GetOverlappingActors(CollectedActors);
+
+	float CollectedPower = 0;
+
+	for (int i = 0; i < CollectedActors.Num(); i++) {
+		APickup* const pickup = Cast<APickup>(CollectedActors[i]);
+		if (pickup && !pickup->IsPendingKill() && pickup->IsActive()) {
+			pickup->WasCollected();
+
+			ABatteryPickup* const TestBattery = Cast<ABatteryPickup>(pickup);
+			if (TestBattery) {
+				CollectedPower += TestBattery->GetPower();
+			}
+
+			pickup->SetActive(false);
+		}
+	}
+
+	if (CollectedPower > 0) {
+		UpdatePower(CollectedPower);
 	}
 }
